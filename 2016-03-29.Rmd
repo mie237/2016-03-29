@@ -1,0 +1,150 @@
+---
+title: 'MIE237'
+author: "Neil Montgomery"
+date: "2016-03-29"
+output: 
+  ioslides_presentation: 
+    css: 'styles.css' 
+    widescreen: true 
+    transition: 0.001
+---
+\newcommand{\Var}[1]{\text{Var}\left( #1 \right)}
+\newcommand{\E}[1]{E\left( #1 \right)}
+\newcommand{\Sample}[1]{#1_1,\ldots,#1_n}
+\newcommand{\od}[2]{\overline #1_{#2\cdot}}
+\newcommand{\flist}[2]{\{#1_1, #1_2, \ldots, #1_#2\}}
+\newcommand{\samp}[2]{#1_1, #1_2, \ldots, #1_#2}
+\renewcommand{\bar}[1]{\overline{#1}}
+\newcommand{\ve}{\varepsilon}
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+
+## Multicollinearity { .build }
+
+We have seen (in the polynomial regression example) seemingly strange behaviour relating to p-values when new terms are added to a model.
+
+The cause is "multicollinearity" - the existence of strong linear relationships among input variables. 
+
+Most regression datasets exhibit linear relationships among inputs to some extent. It is a MYTH that input variables must be "independent", either probabilistically or linear-algebraically. 
+
+In a nutshell: a strong enough linear relationship can make $\bs{X^\prime X}$ close to "singular" (determinant close to 0), which in turn inflates the variances of the $\hat\beta_i$, leading to model selection and interpretation challenges. 
+
+But this is a *numerical* problem and not a scientific problem.
+
+## The source of the problem { .build }
+
+Recall: 
+$$\bs{\hat\beta} = \bs{(X^\prime X)^{-1}X^\prime y}$$
+
+And:
+$$Var(\hat\beta_i) = c_{ii}\sigma^2$$
+where $c_{ii}$ is the $i$th diagonal element of $\bs{(X^\prime X)^{-1}}$
+
+Fact: the stronger the linear dependency among the columns of $\bs{X}$ are,
+the higher the $c_{ii}$ for the $\hat\beta_i$ corresponding
+to those $x_i$ involved in the dependency.
+
+Usually the dependency is simply a matter of "correlation" among pairs of inputs, but complex multi-way dependencies are possible. 
+
+## Illustration of the problem
+
+```{r, echo=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+X_A <- cbind(con=rep(1,16),x1=rep(1:4,each=4),x2=rep(1:4,4))
+X_B <- cbind(con=rep(1,16),x1=rep(1:4,each=4), x2=c(
+                              (1:4-1)/20+1,
+                              (1:4-2)/20+2,
+                              (1:4-3)/20+3,
+                              (1:4-4)/20+4))
+```
+
+Two cases:
+
+<div class="columns-2">
+```{r, echo=FALSE, fig.width=4, fig.height=4}
+data.frame(X_A) %>% 
+  ggplot(aes(x=x1, y=x2)) + geom_point() + ggtitle("Case A")
+```
+
+
+
+```{r, echo=FALSE, fig.width=4, fig.height=4}
+data.frame(X_B) %>% 
+  ggplot(aes(x=x1, y=x2)) + geom_point() + ggtitle("Case B")
+```
+
+
+</div>
+
+## Illustration of the problem - the matrices { .build }
+
+$$\bs{(X_A^\prime X_A)} = \begin{bmatrix}
+16 &    40 &    40\\
+40&  120 & 100 \\
+40 & 100  &  120
+\end{bmatrix}
+\qquad
+\bs{(X_A^\prime X_A)^{-1}} = \begin{bmatrix}
+0.69 & -0.13 & -0.13\\
+-0.13 & 0.05 & 0.00\\
+-0.13 & 0.00 & 0.05
+\end{bmatrix}
+$$
+
+$$\bs{(X_B^\prime X_B)} = 
+\begin{bmatrix}
+16 &    40 &    40\\
+40&  120 & 119 \\
+40 &119  &  118.1
+\end{bmatrix}
+\qquad
+\bs{(X_B^\prime X_B)^{-1}} = 
+\begin{bmatrix}
+0.69 & 2.25 & -2.5\\
+2.25 & 18.1 & -19\\
+-2.5 & -19 & 20
+\end{bmatrix}
+$$
+
+I'll generate some data from the same model in each case:
+$$Y = 1 + 2x_1 + 3x_2 + \varepsilon, \quad\varepsilon \sim N(0,1)$$
+
+```{r, echo=FALSE}
+set.seed(2)
+error <- rnorm(16, 0, 1)
+Case_A = data.frame(y = X_A %*% c(1,2,3) + error,
+                    x1 = X_A[,2], x2 = X_A[,3])
+Case_B = data.frame(y = X_B %*% c(1,2,3) + error,
+                    x1 = X_B[,2], x2 = X_B[,3])
+
+```
+
+
+Then fit the two datasets to regression models...
+
+## Case A
+
+```{r, echo=FALSE}
+summary(lm(y ~ x1 + x2, data = Case_A))
+```
+
+## Case B
+
+```{r, echo=FALSE}
+summary(lm(y ~ x1 + x2, data = Case_B))
+```
+
+Note the small p-value for the overall $F$ test.
+
+## Note that multicollinearity is merely a *possible* problem
+
+Case C: same model fit to the Case B situation but with $n=288$
+
+```{r, echo=FALSE}
+set.seed(11)
+X_C <- X_B[rep(1:16, 18),]
+Case_C = data.frame(y = X_C %*% c(1,2,3) + rnorm(288, 0, 1),
+                    x1 = X_C[,2], x2 = X_C[,3])
+summary(lm(y ~ x1 + x2, data = Case_C))
+```
+
